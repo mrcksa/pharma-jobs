@@ -3,29 +3,57 @@ import { supabase } from "./supabase"
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || ""
 
-const JOBS = [
-  { id:1, title:"Medical Science Liaison", company:"Pfizer", sector:"farmacéutico", area:"Científica/Médica", exp:"Senior", salary:"55.000–75.000€", desc:"Soporte científico a KOLs y equipos médicos. Presentación de datos clínicos y ensayos.", skills:["farmacología","comunicación científica","inglés","oncología"] },
-  { id:2, title:"Regulatory Affairs Specialist", company:"Novartis", sector:"farmacéutico", area:"Regulatorio", exp:"Mid", salary:"38.000–50.000€", desc:"Gestión de expedientes regulatorios ante la EMA y agencias nacionales.", skills:["regulatorio","CTD","inglés","ICH guidelines"] },
-  { id:3, title:"Clinical Data Manager", company:"IQVIA", sector:"hospitalario", area:"Datos/TI", exp:"Mid", salary:"40.000–52.000€", desc:"Gestión y validación de datos clínicos en estudios multicéntricos.", skills:["CDMS","SAS","Excel","ensayos clínicos"] },
-  { id:4, title:"Pharmacovigilance Analyst", company:"Roche", sector:"farmacéutico", area:"Farmacovigilancia", exp:"Junior", salary:"28.000–38.000€", desc:"Notificación y seguimiento de eventos adversos según normativa ICH E2A.", skills:["farmacovigilancia","inglés","argus safety","regulatorio"] },
-  { id:5, title:"Health IT Consultant", company:"Philips Health", sector:"hospitalario", area:"Datos/TI", exp:"Senior", salary:"60.000–80.000€", desc:"Implantación de soluciones HIS/EMR en hospitales europeos.", skills:["HL7","FHIR","gestión de proyectos","inglés"] },
-  { id:6, title:"Medical Affairs Manager", company:"AstraZeneca", sector:"farmacéutico", area:"Científica/Médica", exp:"Senior", salary:"65.000–85.000€", desc:"Liderazgo de estrategia médica para línea de oncología.", skills:["oncología","inglés","liderazgo","publicaciones médicas"] },
-  { id:7, title:"Quality Assurance Specialist", company:"Fresenius", sector:"hospitalario", area:"Calidad", exp:"Mid", salary:"35.000–45.000€", desc:"Auditorías internas y gestión de desviaciones bajo normas GMP/ISO 13485.", skills:["GMP","ISO 13485","auditoría","BPF"] },
-  { id:8, title:"Biostatistician", company:"Syneos Health", sector:"farmacéutico", area:"Datos/TI", exp:"Mid", salary:"45.000–60.000€", desc:"Análisis estadístico de ensayos clínicos Fase II y III.", skills:["R","SAS","estadística","ensayos clínicos"] },
-  { id:9, title:"Medical Writer", company:"Parexel", sector:"farmacéutico", area:"Científica/Médica", exp:"Junior", salary:"30.000–42.000€", desc:"Redacción de documentos regulatorios, protocolos e informes clínicos.", skills:["redacción médica","inglés","ICH E3","MS Word"] },
-  { id:10, title:"Telemedicine Coordinator", company:"HM Hospitales", sector:"hospitalario", area:"Coordinación", exp:"Junior", salary:"25.000–33.000€", desc:"Coordinación de consultas virtuales y plataformas de telesalud.", skills:["telemedicina","CRM","comunicación","inglés"] },
-]
-
-const SECTORS = ["Todos","farmacéutico","hospitalario"]
-const AREAS   = ["Todas","Científica/Médica","Regulatorio","Datos/TI","Farmacovigilancia","Calidad","Coordinación"]
+const AREAS   = ["Todas","Científica/Médica","Regulatorio","Datos/TI","Farmacovigilancia","Calidad","Coordinación","Otros"]
 const EXPS    = ["Todos","Junior","Mid","Senior"]
-const LOGO_COLORS = ["#185FA5","#0F6E56","#7F77DD","#D85A30","#D4537E","#BA7517"]
+const LOGO_COLORS = ["#185FA5","#0F6E56","#7F77DD","#D85A30","#D4537E","#BA7517","#639922","#BA7517"]
 const PLATFORMS = [
   { name:"LinkedIn", url:"https://www.linkedin.com/jobs/search/?keywords=pharma+hospital+remote&f_WT=2", bg:"#0a66c2" },
   { name:"Indeed",   url:"https://es.indeed.com/jobs?q=farmaceutico+hospitalario&remotejobs=true",        bg:"#2164f3" },
   { name:"InfoJobs", url:"https://www.infojobs.net/jobsearch/search-results/list.xhtml?keyword=farmaceutico&teletrabajo=true", bg:"#ff6600" },
   { name:"Jooble",   url:"https://es.jooble.org/SearchResult?ukw=farmac%C3%A9utico+hospitalario&remote=true", bg:"#4ba3e2" },
 ]
+
+// Palabras clave para filtrar ofertas del sector
+const PHARMA_KEYWORDS = [
+  "pharma","medical","clinical","hospital","health","biotech","biomedical",
+  "regulatory","pharmacovigilance","drug","medicine","therapeutic","oncology",
+  "radiology","laboratory","diagnostics","nursing","healthcare","life science"
+]
+
+function detectArea(title, desc) {
+  const t = (title + " " + desc).toLowerCase()
+  if (/regulat|compliance|affairs/.test(t))        return "Regulatorio"
+  if (/pharmacovigilan|safety|adverse/.test(t))     return "Farmacovigilancia"
+  if (/data|analyst|statistic|bioinformat|sql|python|engineer/.test(t)) return "Datos/TI"
+  if (/quality|audit|gmp|iso/.test(t))              return "Calidad"
+  if (/coordinat|project|manager|operations/.test(t)) return "Coordinación"
+  if (/medical|clinical|science|research|doctor|nurse/.test(t)) return "Científica/Médica"
+  return "Otros"
+}
+
+function detectExp(title, desc) {
+  const t = (title + " " + desc).toLowerCase()
+  if (/senior|lead|principal|director|head|vp|manager/.test(t)) return "Senior"
+  if (/junior|entry|graduate|intern|trainee/.test(t))            return "Junior"
+  return "Mid"
+}
+
+function normalizeJob(j, idx) {
+  return {
+    id: j.id || idx,
+    title: j.title,
+    company: j.company_name,
+    sector: "farmacéutico/hospitalario",
+    area: detectArea(j.title, j.description || ""),
+    exp: detectExp(j.title, j.description || ""),
+    salary: j.salary || "No especificado",
+    desc: j.description ? j.description.replace(/<[^>]+>/g, "").slice(0, 200) + "..." : "Ver oferta completa.",
+    skills: (j.tags || []).slice(0, 5),
+    url: j.url,
+    logo: j.company_logo,
+    date: j.publication_date ? new Date(j.publication_date).toLocaleDateString("es-ES") : "",
+  }
+}
 
 const css = `
   .app{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:740px;margin:0 auto;padding:0 0 2rem}
@@ -37,7 +65,7 @@ const css = `
   .hero-stat span{font-size:20px;font-weight:500;display:block}
   .hero-user{display:flex;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.2)}
   .hero-user p{margin:0;font-size:13px;opacity:.85}
-  .logout-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:5px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:background .15s}
+  .logout-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:5px 14px;border-radius:8px;font-size:12px;cursor:pointer}
   .logout-btn:hover{background:rgba(255,255,255,.35)}
   .tabs{display:flex;gap:4px;margin-bottom:1.25rem;background:#f1efe8;border-radius:10px;padding:4px}
   .tab{flex:1;border:none;background:none;border-radius:8px;padding:8px 4px;cursor:pointer;font-size:13px;font-weight:400;color:#5f5e5a;transition:all .15s;white-space:nowrap}
@@ -49,20 +77,22 @@ const css = `
   .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;opacity:.4;pointer-events:none}
   .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .filters select{flex:1;min-width:110px;font-size:13px;padding:8px 10px;border:0.5px solid #ccc;border-radius:8px;background:#fff;font-family:inherit;outline:none}
-  .results-label{font-size:13px;color:#5f5e5a;margin-bottom:12px}
+  .results-label{font-size:13px;color:#5f5e5a;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .refresh-btn{font-size:12px;background:none;border:0.5px solid #ccc;border-radius:6px;padding:3px 10px;cursor:pointer;color:#5f5e5a}
+  .refresh-btn:hover{border-color:#378ADD;color:#378ADD}
   .job-grid{display:grid;gap:10px}
   .job-card{background:#fff;border:0.5px solid #e0e0d8;border-radius:14px;padding:1rem 1.25rem;cursor:pointer;transition:all .15s}
   .job-card:hover{border-color:#378ADD;box-shadow:0 2px 12px rgba(24,95,165,.1);transform:translateY(-1px)}
   .job-card.fav{border-color:#D4537E33}
   .job-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
-  .job-logo{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:500;font-size:13px;flex-shrink:0}
+  .job-logo{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:500;font-size:13px;flex-shrink:0;overflow:hidden}
+  .job-logo img{width:100%;height:100%;object-fit:contain}
   .job-title{margin:0;font-weight:500;font-size:15px;color:#1a1a1a}
   .job-company{margin:2px 0 0;font-size:13px;color:#5f5e5a}
   .job-tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .tag{font-size:11px;padding:3px 9px;border-radius:20px}
   .tag-remote{background:#0c447c;color:#B5D4F4}
-  .tag-farm{background:#E6F1FB;color:#185FA5}
-  .tag-hosp{background:#E1F5EE;color:#0F6E56}
+  .tag-sector{background:#E6F1FB;color:#185FA5}
   .tag-neutral{background:#f1efe8;color:#5f5e5a}
   .job-footer{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:0.5px solid #e0e0d8}
   .salary{font-size:13px;font-weight:500;color:#1a1a1a}
@@ -99,12 +129,17 @@ const css = `
   .form-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .form-row input,.form-row select{flex:1;min-width:140px;font-size:13px;padding:8px 12px;border:0.5px solid #ccc;border-radius:8px;font-family:inherit;outline:none;background:#fff}
   .form-label{font-size:13px;color:#5f5e5a;margin:0 0 6px;display:block}
-  .alert-result{background:#f1efe8;border-radius:10px;padding:14px;font-size:13px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;margin:12px 0}
+  .alert-result{background:#f1efe8;border-radius:10px;padding:14px;font-size:13px;line-height:1.8;white-space:pre-wrap;margin:12px 0}
   .copy-row{display:flex;gap:8px;flex-wrap:wrap}
   .empty-state{text-align:center;padding:3rem 1rem;color:#5f5e5a}
   .empty-state p{font-size:14px;margin:8px 0 0}
   textarea{width:100%;resize:vertical;font-size:14px;padding:10px 12px;border:0.5px solid #ccc;border-radius:10px;background:#fff;color:#1a1a1a;font-family:inherit;line-height:1.6;outline:none}
   .cv-badge{background:#E1F5EE;color:#0F6E56;border-radius:8px;padding:8px 14px;font-size:13px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .loading{display:flex;flex-direction:column;align-items:center;padding:3rem 1rem;color:#5f5e5a;gap:12px}
+  .spinner{width:32px;height:32px;border:3px solid #e0e0d8;border-top-color:#185FA5;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .error-bar{background:#FCEBEB;color:#A32D2D;border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:16px}
+  .date-label{font-size:11px;color:#888;margin-left:auto}
 `
 
 function MatchPill({ score }) {
@@ -113,13 +148,22 @@ function MatchPill({ score }) {
   return <span className={cls}>{score}% match</span>
 }
 
-function JobCard({ job, score, isFav, onToggleFav, onClick }) {
-  const logoBg = LOGO_COLORS[job.id % LOGO_COLORS.length]
+function JobLogo({ job, idx }) {
+  const logoBg = LOGO_COLORS[idx % LOGO_COLORS.length]
+  if (job.logo) return (
+    <div className="job-logo" style={{ background:"#f5f5f3" }}>
+      <img src={job.logo} alt={job.company} onError={e => { e.target.style.display="none" }} />
+    </div>
+  )
+  return <div className="job-logo" style={{ background:logoBg+"22", color:logoBg }}>{(job.company||"?").slice(0,2).toUpperCase()}</div>
+}
+
+function JobCard({ job, idx, score, isFav, onToggleFav, onClick }) {
   return (
     <div className={`job-card${isFav?" fav":""}`} onClick={() => onClick(job, score)}>
       <div className="job-card-top">
         <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-          <div className="job-logo" style={{ background:logoBg+"22", color:logoBg }}>{job.company.slice(0,2).toUpperCase()}</div>
+          <JobLogo job={job} idx={idx} />
           <div>
             <p className="job-title">{job.title}</p>
             <p className="job-company">{job.company}</p>
@@ -131,27 +175,26 @@ function JobCard({ job, score, isFav, onToggleFav, onClick }) {
         </div>
       </div>
       <div className="job-tags">
-        <span className={`tag tag-${job.sector==="farmacéutico"?"farm":"hosp"}`}>{job.sector}</span>
-        <span className="tag tag-neutral">{job.area}</span>
+        <span className="tag tag-sector">{job.area}</span>
         <span className="tag tag-neutral">{job.exp}</span>
         <span className="tag tag-remote">Remoto</span>
+        {job.date && <span className="date-label">{job.date}</span>}
       </div>
       <div className="job-footer">
-        <span className="salary">{job.salary}/año</span>
+        <span className="salary">{job.salary !== "No especificado" ? job.salary : ""}</span>
         <span style={{ fontSize:12, color:"#5f5e5a" }}>Ver detalles →</span>
       </div>
     </div>
   )
 }
 
-function Modal({ job, score, isFav, onToggleFav, onClose }) {
-  const logoBg = LOGO_COLORS[job.id % LOGO_COLORS.length]
+function Modal({ job, idx, score, isFav, onToggleFav, onClose }) {
   return (
     <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) onClose() }}>
       <div className="modal">
         <div className="modal-header">
           <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-            <div className="job-logo" style={{ background:logoBg+"22", color:logoBg, width:44, height:44 }}>{job.company.slice(0,2).toUpperCase()}</div>
+            <JobLogo job={job} idx={idx} />
             <div>
               <p style={{ margin:0, fontWeight:500, fontSize:16 }}>{job.title}</p>
               <p style={{ margin:0, fontSize:13, color:"#5f5e5a" }}>{job.company} · Remoto</p>
@@ -164,14 +207,20 @@ function Modal({ job, score, isFav, onToggleFav, onClose }) {
         </div>
         {score !== null && <div style={{ marginBottom:14 }}><MatchPill score={score} /></div>}
         <p style={{ fontSize:14, color:"#5f5e5a", marginBottom:16, lineHeight:1.7 }}>{job.desc}</p>
-        <p className="section-label">Habilidades requeridas</p>
-        <div className="skills-wrap" style={{ marginBottom:16 }}>{job.skills.map(s=><span key={s} className="skill-tag">{s}</span>)}</div>
-        <p className="section-label">Salario estimado</p>
-        <p style={{ margin:"0 0 20px", fontWeight:500, fontSize:15 }}>{job.salary}/año</p>
-        <a href={`https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(job.title+" "+job.company)}&f_WT=2`}
-          target="_blank" rel="noreferrer" className="primary-btn" style={{ display:"block", textAlign:"center", textDecoration:"none" }}>
-          Buscar en LinkedIn →
-        </a>
+        {job.skills?.length > 0 && <>
+          <p className="section-label">Etiquetas</p>
+          <div className="skills-wrap" style={{ marginBottom:16 }}>{job.skills.map(s=><span key={s} className="skill-tag">{s}</span>)}</div>
+        </>}
+        {job.salary !== "No especificado" && <>
+          <p className="section-label">Salario</p>
+          <p style={{ margin:"0 0 20px", fontWeight:500, fontSize:15 }}>{job.salary}</p>
+        </>}
+        {job.url && (
+          <a href={job.url} target="_blank" rel="noreferrer" className="primary-btn"
+            style={{ display:"block", textAlign:"center", textDecoration:"none" }}>
+            Ver oferta completa →
+          </a>
+        )}
       </div>
     </div>
   )
@@ -183,7 +232,6 @@ export default function App({ session }) {
 
   const [tab, setTab]               = useState("search")
   const [query, setQuery]           = useState("")
-  const [sector, setSector]         = useState("Todos")
   const [area, setArea]             = useState("Todas")
   const [exp, setExp]               = useState("Todos")
   const [selected, setSelected]     = useState(null)
@@ -193,15 +241,45 @@ export default function App({ session }) {
   const [profileText, setProfileText] = useState("")
   const [favs, setFavs]             = useState([])
   const [alertEmail, setAlertEmail] = useState(userEmail)
-  const [alertSector, setAlertSector] = useState("Todos")
   const [alertArea, setAlertArea]   = useState("Todas")
   const [alertExp, setAlertExp]     = useState("Todos")
   const [alertResult, setAlertResult] = useState(null)
   const [copied, setCopied]         = useState(false)
   const [cvUrl, setCvUrl]           = useState(null)
+  const [jobs, setJobs]             = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [fetchError, setFetchError] = useState("")
   const fileRef = useRef()
 
-  // Cargar datos del usuario desde Supabase
+  // Cargar ofertas reales desde Remotive
+  async function fetchJobs() {
+    setLoading(true); setFetchError("")
+    try {
+      const queries = ["pharma","medical","clinical","health","biotech"]
+      const results = await Promise.all(
+        queries.map(q =>
+          fetch(`https://remotive.com/api/remote-jobs?search=${q}&limit=20`)
+            .then(r => r.json()).catch(() => ({ jobs:[] }))
+        )
+      )
+      const allJobs = results.flatMap(r => r.jobs || [])
+      // Deduplicar por id
+      const seen = new Set()
+      const unique = allJobs.filter(j => {
+        if (seen.has(j.id)) return false
+        seen.add(j.id); return true
+      })
+      // Filtrar por palabras clave del sector
+      const filtered = unique.filter(j => {
+        const text = (j.title + " " + (j.tags||[]).join(" ") + " " + (j.category_name||"")).toLowerCase()
+        return PHARMA_KEYWORDS.some(kw => text.includes(kw))
+      })
+      setJobs(filtered.map((j,i) => normalizeJob(j,i)))
+    } catch { setFetchError("No se pudieron cargar las ofertas. Comprueba tu conexión.") }
+    setLoading(false)
+  }
+
+  // Cargar datos usuario y ofertas al iniciar
   useEffect(() => {
     async function load() {
       const [{ data: prof }, { data: favData }] = await Promise.all([
@@ -212,16 +290,14 @@ export default function App({ session }) {
       if (favData) setFavs(favData.map(f => f.job_id))
     }
     load()
+    fetchJobs()
   }, [uid])
 
   const toggleFav = async (jobId) => {
     const isFav = favs.includes(jobId)
     setFavs(prev => isFav ? prev.filter(f=>f!==jobId) : [...prev, jobId])
-    if (isFav) {
-      await supabase.from('favorites').delete().eq('user_id', uid).eq('job_id', jobId)
-    } else {
-      await supabase.from('favorites').insert({ user_id: uid, job_id: jobId })
-    }
+    if (isFav) await supabase.from('favorites').delete().eq('user_id', uid).eq('job_id', jobId)
+    else await supabase.from('favorites').insert({ user_id: uid, job_id: jobId })
   }
 
   const calcScore = useCallback((job) => {
@@ -229,24 +305,25 @@ export default function App({ session }) {
     const skills = (profile.skills||[]).map(s=>s.toLowerCase())
     const expMap = { Junior:1, Mid:2, Senior:3 }
     let s = 0
-    const matched = job.skills.filter(sk=>skills.some(us=>sk.toLowerCase().includes(us)||us.includes(sk.toLowerCase())))
-    s += Math.min(60, matched.length*15)
+    const text = (job.title + " " + job.desc + " " + (job.skills||[]).join(" ")).toLowerCase()
+    const matched = skills.filter(us => text.includes(us))
+    s += Math.min(60, matched.length * 15)
     const ul=expMap[profile.experience]||1, jl=expMap[job.exp]||1
     if(ul>=jl) s+=30; else if(ul===jl-1) s+=15
-    if(profile.sector && job.sector===profile.sector) s+=10
-    return Math.min(100,s)
+    return Math.min(100, s)
   },[profile])
 
-  const filtered = JOBS.filter(j => {
-    const q=query.toLowerCase()
-    return (!q||j.title.toLowerCase().includes(q)||j.company.toLowerCase().includes(q)||j.skills.some(s=>s.includes(q)))
-      &&(sector==="Todos"||j.sector===sector)&&(area==="Todas"||j.area===area)&&(exp==="Todos"||j.exp===exp)
-  }).map(j=>({job:j,score:calcScore(j)})).sort((a,b)=>(b.score||0)-(a.score||0))
+  const filtered = jobs.filter(j => {
+    const q = query.toLowerCase()
+    return (!q || j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || (j.skills||[]).some(s=>s.toLowerCase().includes(q)))
+      && (area==="Todas" || j.area===area)
+      && (exp==="Todos" || j.exp===exp)
+  }).map(j=>({job:j, score:calcScore(j)})).sort((a,b)=>(b.score||0)-(a.score||0))
 
-  const favJobs = JOBS.filter(j=>favs.includes(j.id)).map(j=>({job:j,score:calcScore(j)}))
+  const favJobs = jobs.filter(j=>favs.includes(j.id)).map(j=>({job:j,score:calcScore(j)}))
 
   async function saveProfile(parsed, cvPath) {
-    const row = { id: uid, ...parsed, cv_url: cvPath || cvUrl, updated_at: new Date().toISOString() }
+    const row = { id:uid, ...parsed, cv_url: cvPath||cvUrl, updated_at: new Date().toISOString() }
     await supabase.from('profiles').upsert(row)
     setProfile(row)
   }
@@ -255,21 +332,18 @@ export default function App({ session }) {
     if (!API_KEY) { setUploadMsg("Añade VITE_ANTHROPIC_API_KEY en tu .env"); return }
     setUploading(true); setUploadMsg("Analizando con IA...")
     try {
-      // Subir CV a Supabase Storage si es archivo
       let cvPath = null
       if (isFile && file) {
         const path = `${uid}/${Date.now()}_${file.name}`
-        const { error } = await supabase.storage.from('cvs').upload(path, file, { upsert: true })
+        const { error } = await supabase.storage.from('cvs').upload(path, file, { upsert:true })
         if (!error) { cvPath = path; setCvUrl(path) }
       }
-
       const userContent = isFile
         ? [{ type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 }},{ type:"text", text:`Extrae del CV. Solo JSON sin markdown:\n{"name":"","email":"","experience":"Junior|Mid|Senior","sector":"farmacéutico|hospitalario|otro","skills":[],"summary":""}` }]
         : `Extrae del texto. Solo JSON sin markdown:\n{"name":"","email":"","experience":"Junior|Mid|Senior","sector":"farmacéutico|hospitalario|otro","skills":[],"summary":""}\n\n${content}`
-
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method:"POST",
-        headers:{ "Content-Type":"application/json", "x-api-key":API_KEY, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+        headers:{ "Content-Type":"application/json","x-api-key":API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" },
         body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:userContent}] })
       })
       const data = await res.json()
@@ -299,24 +373,18 @@ export default function App({ session }) {
     if (!cvUrl) return
     await supabase.storage.from('cvs').remove([cvUrl])
     setCvUrl(null)
-    await supabase.from('profiles').update({ cv_url: null }).eq('id', uid)
+    await supabase.from('profiles').update({ cv_url:null }).eq('id',uid)
   }
 
   function generateAlert() {
-    const matches = JOBS.filter(j=>(alertSector==="Todos"||j.sector===alertSector)&&(alertArea==="Todas"||j.area===alertArea)&&(alertExp==="Todos"||j.exp===alertExp))
-    const lines = matches.map(j=>`• ${j.title} en ${j.company} (${j.exp}) — ${j.salary}/año`).join("\n")
-    const text = `Hola,\n\nAquí tienes las ofertas remotas del sector ${alertSector==="Todos"?"farmacéutico y hospitalario":alertSector}:\n\n${lines||"No se encontraron ofertas."}\n\nTodas las posiciones son 100% remotas.\n\n¡Buena suerte!`
+    const matches = filtered.slice(0,10)
+    const lines = matches.map(({job})=>`• ${job.title} en ${job.company} — ${job.area}`).join("\n")
+    const text = `Hola,\n\nAquí tienes las últimas ofertas remotas del sector salud:\n\n${lines||"No se encontraron ofertas."}\n\nTodas las posiciones son 100% remotas.\n\n¡Buena suerte!`
     setAlertResult({ text, count:matches.length })
-    supabase.from('alerts').upsert({ user_id:uid, email:alertEmail, sector:alertSector, area:alertArea, exp:alertExp })
+    supabase.from('alerts').upsert({ user_id:uid, email:alertEmail, sector:"remotive", area:alertArea, exp:alertExp })
   }
 
-  function copyAlert() {
-    navigator.clipboard.writeText(alertResult.text).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000) })
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut()
-  }
+  async function handleLogout() { await supabase.auth.signOut() }
 
   const TABS = [
     { id:"search",    label:"Ofertas" },
@@ -334,9 +402,9 @@ export default function App({ session }) {
           <h1>Empleo Remoto en Salud</h1>
           <p>Sector farmacéutico y hospitalario · Solo posiciones 100% remotas</p>
           <div className="hero-stats">
-            <div className="hero-stat"><span>{JOBS.length}</span>ofertas</div>
+            <div className="hero-stat"><span>{loading?"...":jobs.length}</span>ofertas</div>
             <div className="hero-stat"><span>{favs.length}</span>favoritos</div>
-            <div className="hero-stat"><span>2</span>sectores</div>
+            <div className="hero-stat"><span>En vivo</span>Remotive API</div>
           </div>
           <div className="hero-user">
             <p>{userEmail}</p>
@@ -356,25 +424,43 @@ export default function App({ session }) {
           <div>
             {profile && (
               <div className="active-bar">
-                <span style={{ fontSize:13, color:"#185FA5" }}>Perfil activo: <strong>{profile.name}</strong></span>
+                <span style={{ fontSize:13,color:"#185FA5" }}>Perfil activo: <strong>{profile.name}</strong></span>
                 <button onClick={()=>setTab("profile")} style={{ background:"none",border:"none",fontSize:12,color:"#185FA5",cursor:"pointer",padding:0 }}>Editar →</button>
               </div>
             )}
+            {fetchError && <div className="error-bar">{fetchError}</div>}
             <div className="search-bar">
               <svg className="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 3a6 6 0 100 12A6 6 0 009 3zM1 9a8 8 0 1114.32 4.906l3.387 3.387a1 1 0 01-1.414 1.414l-3.387-3.387A8 8 0 011 9z" clipRule="evenodd"/></svg>
               <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cargo, empresa o habilidad..." />
             </div>
             <div className="filters">
-              <select value={sector} onChange={e=>setSector(e.target.value)}>{SECTORS.map(s=><option key={s}>{s}</option>)}</select>
               <select value={area} onChange={e=>setArea(e.target.value)}>{AREAS.map(a=><option key={a}>{a}</option>)}</select>
               <select value={exp} onChange={e=>setExp(e.target.value)}>{EXPS.map(x=><option key={x}>{x}</option>)}</select>
             </div>
-            <p className="results-label">{filtered.length} oferta{filtered.length!==1?"s":""} encontrada{filtered.length!==1?"s":""}</p>
-            <div className="job-grid">
-              {filtered.map(({job,score})=>(
-                <JobCard key={job.id} job={job} score={score} isFav={favs.includes(job.id)} onToggleFav={toggleFav} onClick={(j,s)=>setSelected({job:j,score:s})} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="loading">
+                <div className="spinner"></div>
+                <p style={{ fontSize:14 }}>Buscando ofertas reales...</p>
+              </div>
+            ) : (
+              <>
+                <div className="results-label">
+                  <span>{filtered.length} oferta{filtered.length!==1?"s":""} encontrada{filtered.length!==1?"s":""}</span>
+                  <button className="refresh-btn" onClick={fetchJobs}>Actualizar</button>
+                </div>
+                <div className="job-grid">
+                  {filtered.map(({job,score},i)=>(
+                    <JobCard key={job.id} job={job} idx={i} score={score} isFav={favs.includes(job.id)} onToggleFav={toggleFav} onClick={(j,s)=>setSelected({job:j,idx:i,score:s})} />
+                  ))}
+                  {filtered.length===0 && (
+                    <div className="empty-state">
+                      <div style={{ fontSize:40 }}>🔍</div>
+                      <p>No se encontraron ofertas con estos filtros.<br/>Prueba a cambiar la búsqueda.</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -389,8 +475,8 @@ export default function App({ session }) {
               <>
                 <p className="results-label">{favJobs.length} oferta{favJobs.length!==1?"s guardadas":" guardada"}</p>
                 <div className="job-grid">
-                  {favJobs.map(({job,score})=>(
-                    <JobCard key={job.id} job={job} score={score} isFav={true} onToggleFav={toggleFav} onClick={(j,s)=>setSelected({job:j,score:s})} />
+                  {favJobs.map(({job,score},i)=>(
+                    <JobCard key={job.id} job={job} idx={i} score={score} isFav={true} onToggleFav={toggleFav} onClick={(j,s)=>setSelected({job:j,idx:i,score:s})} />
                   ))}
                 </div>
               </>
@@ -408,7 +494,6 @@ export default function App({ session }) {
               </div>
               <label className="form-label">Filtros</label>
               <div className="form-row">
-                <select value={alertSector} onChange={e=>setAlertSector(e.target.value)}>{SECTORS.map(s=><option key={s}>{s}</option>)}</select>
                 <select value={alertArea} onChange={e=>setAlertArea(e.target.value)}>{AREAS.map(a=><option key={a}>{a}</option>)}</select>
                 <select value={alertExp} onChange={e=>setAlertExp(e.target.value)}>{EXPS.map(x=><option key={x}>{x}</option>)}</select>
               </div>
@@ -416,10 +501,10 @@ export default function App({ session }) {
             </div>
             {alertResult && (
               <div className="alert-card">
-                <p className="section-label">{alertResult.count} oferta{alertResult.count!==1?"s":""} encontrada{alertResult.count!==1?"s":""}</p>
+                <p className="section-label">{alertResult.count} oferta{alertResult.count!==1?"s":""} incluida{alertResult.count!==1?"s":""}</p>
                 <div className="alert-result">{alertResult.text}</div>
                 <div className="copy-row">
-                  <button className="secondary-btn" onClick={copyAlert}>{copied?"¡Copiado!":"Copiar texto"}</button>
+                  <button className="secondary-btn" onClick={()=>{ navigator.clipboard.writeText(alertResult.text).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000) }) }}>{copied?"¡Copiado!":"Copiar texto"}</button>
                   {alertEmail && (
                     <button className="primary-btn" style={{ flex:1 }} onClick={()=>{
                       const sub=encodeURIComponent("Alertas de empleo remoto — Salud")
@@ -447,23 +532,21 @@ export default function App({ session }) {
                   </div>
                   <p style={{ fontSize:14,color:"#5f5e5a",margin:"0 0 10px",lineHeight:1.6 }}>{profile.summary}</p>
                   <div style={{ display:"flex",gap:8,marginBottom:10 }}>
-                    <span className="tag tag-farm">{profile.experience}</span>
-                    <span className={`tag tag-${profile.sector==="farmacéutico"?"farm":"hosp"}`}>{profile.sector}</span>
+                    <span className="tag tag-sector">{profile.experience}</span>
+                    <span className="tag tag-neutral">{profile.sector}</span>
                   </div>
                   <p className="section-label">Habilidades</p>
                   <div className="skills-wrap">{(profile.skills||[]).map(s=><span key={s} className="skill-tag">{s}</span>)}</div>
                 </div>
                 {cvUrl ? (
                   <div className="cv-badge">
-                    <span>CV subido y almacenado de forma segura</span>
+                    <span>CV almacenado de forma segura</span>
                     <div style={{ display:"flex",gap:8 }}>
                       <button className="secondary-btn" onClick={downloadCv} style={{ padding:"4px 12px",fontSize:12 }}>Descargar</button>
                       <button className="secondary-btn" onClick={deleteCv} style={{ padding:"4px 12px",fontSize:12,color:"#A32D2D" }}>Eliminar</button>
                     </div>
                   </div>
-                ) : (
-                  <p style={{ fontSize:13,color:"#5f5e5a",marginBottom:12 }}>No tienes CV subido todavía.</p>
-                )}
+                ) : <p style={{ fontSize:13,color:"#5f5e5a",marginBottom:12 }}>No tienes CV subido todavía.</p>}
                 <button className="secondary-btn" onClick={async()=>{ setProfile(null); await supabase.from('profiles').delete().eq('id',uid) }}>Eliminar perfil</button>
               </div>
             ) : (
@@ -482,7 +565,7 @@ export default function App({ session }) {
                 {!API_KEY && <p style={{ fontSize:12,color:"#D85A30",marginTop:10 }}>Añade VITE_ANTHROPIC_API_KEY en tu .env para activar el análisis con IA.</p>}
               </div>
             )}
-            {uploadMsg&&<p style={{ fontSize:13,color:"#0F6E56",marginTop:12 }}>{uploadMsg}</p>}
+            {uploadMsg && <p style={{ fontSize:13,color:"#0F6E56",marginTop:12 }}>{uploadMsg}</p>}
           </div>
         )}
 
@@ -516,7 +599,7 @@ export default function App({ session }) {
         )}
 
         {selected && (
-          <Modal job={selected.job} score={selected.score} isFav={favs.includes(selected.job.id)} onToggleFav={toggleFav} onClose={()=>setSelected(null)} />
+          <Modal job={selected.job} idx={selected.idx} score={selected.score} isFav={favs.includes(selected.job.id)} onToggleFav={toggleFav} onClose={()=>setSelected(null)} />
         )}
       </div>
     </>
